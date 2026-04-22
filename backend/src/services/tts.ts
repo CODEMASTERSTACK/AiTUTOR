@@ -4,7 +4,7 @@ const HUGGINGFACE_TTS_URLS = [
   "https://router.huggingface.co/hf-inference/models",
   "https://api-inference.huggingface.co/models",
 ];
-const DEFAULT_HF_MODEL = "hexgrad/Kokoro-82M";
+const DEFAULT_HF_MODEL = "mistralai/Voxtral-4B-TTS-2603";
 const RECENT_TTS_TTL_MS = 60_000;
 const recentTtsCache = new Map<string, { audioBase64: string; expiresAt: number }>();
 

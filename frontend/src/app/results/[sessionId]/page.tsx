@@ -4,10 +4,12 @@ import { ScoreCard } from "@/components/ScoreCard";
 import { getEvaluation } from "@/lib/api";
 import { EvaluationResult } from "@/lib/types";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { Clock, ShieldCheck, AlertOctagon, Target } from "lucide-react";
 
-const dimensions: Array<keyof Omit<EvaluationResult, "overallSummary">> = [
+type DimensionKey = "clarity" | "simplicity" | "patience" | "warmth" | "fluency";
+const dimensions: Array<DimensionKey> = [
   "clarity",
   "simplicity",
   "patience",
@@ -15,9 +17,16 @@ const dimensions: Array<keyof Omit<EvaluationResult, "overallSummary">> = [
   "fluency",
 ];
 
-export default function ResultsPage() {
+function ResultsContent() {
   const params = useParams<{ sessionId: string }>();
+  const searchParams = useSearchParams();
   const sessionId = params.sessionId;
+  
+  const rawTime = searchParams.get("time");
+  const durationSeconds = rawTime ? parseInt(rawTime, 10) || 0 : 0;
+  const mm = Math.floor(durationSeconds / 60).toString().padStart(2, '0');
+  const ss = (durationSeconds % 60).toString().padStart(2, '0');
+
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,40 +44,111 @@ export default function ResultsPage() {
 
   if (error) {
     return (
-      <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10">
-        <p className="text-red-600">{error}</p>
-        <Link href="/" className="mt-4 inline-block text-blue-600 hover:underline">
-          Back to home
-        </Link>
+      <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 flex items-center justify-center">
+        <p className="text-red-600 bg-red-50 px-6 py-4 rounded-xl border border-red-200">{error}</p>
       </main>
     );
   }
 
   if (!evaluation) {
     return (
-      <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10">
-        <p className="text-slate-600">Generating your report...</p>
+      <main className="mx-auto min-h-screen w-full max-w-5xl flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#e36c39] border-t-white rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-600 font-semibold tracking-wide">Synthesizing candidate assessment data...</p>
       </main>
     );
   }
 
-  return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10">
-      <h1 className="text-3xl font-bold text-slate-900">Interview Report</h1>
-      <p className="mt-2 text-slate-600">{evaluation.overallSummary}</p>
+  // Calculate algorithmic pass threshold
+  const sum = dimensions.reduce((acc, dim) => acc + (evaluation[dim]?.score || 0), 0);
+  const avgScore = sum / dimensions.length;
+  // Threshold >= 3.5 requires candidates to perform above average consistently
+  const isPass = avgScore >= 3.5;
 
-      <section className="mt-8 grid gap-4 md:grid-cols-2">
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 font-sans">
+      <div className="mb-10 text-center space-y-3">
+        <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">CANDIDATE DOSSIER: {evaluation.candidateName.toUpperCase()}</h1>
+        <p className="text-gray-500 uppercase tracking-widest text-sm font-semibold">Department of Recruitment & Selection • Confidential</p>
+      </div>
+
+      {/* Hero Decision Banner */}
+      <section className={`w-full p-8 rounded-3xl border shadow-sm mb-10 flex flex-col md:flex-row items-center gap-8 ${
+        isPass ? 'bg-[#f4fcf6] border-[#d4f3dd]' : 'bg-[#fff5f5] border-[#fce8e8]'
+      }`}>
+        <div className={`p-5 rounded-full ${isPass ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+          {isPass ? <ShieldCheck className="w-12 h-12" /> : <AlertOctagon className="w-12 h-12" />}
+        </div>
+        <div className="flex-1 text-center md:text-left">
+          <p className="text-sm font-bold tracking-widest text-gray-400 mb-1 uppercase">Final Assessment Outcome</p>
+          <h2 className={`text-3xl font-bold mb-2 ${isPass ? 'text-green-700' : 'text-[#e36c39]'}`}>
+            {isPass ? 'Cleared • Proceed to Next Round' : 'Review Pending • Growth Opportunities Identified'}
+          </h2>
+          <p className="text-gray-600 font-medium">Standardized Aggregate Competency Score: <span className="font-bold text-gray-900">{avgScore.toFixed(1)} / 5.0</span></p>
+        </div>
+        <div className="flex flex-row gap-4">
+           <div className="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 shadow-sm rounded-2xl w-32">
+             <Target className="w-6 h-6 text-[#e36c39] mb-1" />
+             <span className="text-2xl font-black text-gray-900">{avgScore.toFixed(1)}</span>
+             <span className="text-[10px] uppercase font-bold text-gray-400">Net Score</span>
+           </div>
+           <div className="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 shadow-sm rounded-2xl w-32">
+             <Clock className="w-6 h-6 text-[#e36c39] mb-1" />
+             <span className="text-2xl font-black text-gray-900">{durationSeconds > 0 ? `${mm}:${ss}` : 'N/A'}</span>
+             <span className="text-[10px] uppercase font-bold text-gray-400">Round Time</span>
+           </div>
+        </div>
+      </section>
+
+      {/* Evaluator Summary Block */}
+      <section className="bg-white border border-gray-200 rounded-3xl p-8 mb-10 shadow-sm bg-gradient-to-br from-white to-gray-50">
+        <div className="grid md:grid-cols-2 gap-8">
+           <div>
+             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                Key Strengths
+             </h3>
+             <p className="text-[15px] text-gray-800 leading-relaxed">{evaluation.strengths || "No specific strengths identified."}</p>
+           </div>
+           <div>
+             <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <div className="w-2 h-2 bg-[#e36c39] rounded-full"></div>
+                Areas for Growth
+             </h3>
+             <p className="text-[15px] text-gray-800 leading-relaxed">{evaluation.weaknesses || "No specific areas for growth identified."}</p>
+           </div>
+        </div>
+        <div className="mt-8 pt-6 border-t border-gray-200">
+           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Overall Synthesis</h3>
+           <p className="text-sm text-gray-600 leading-relaxed">{evaluation.overallSummary}</p>
+        </div>
+      </section>
+
+      {/* Dimension Grids */}
+      <section className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-12">
         {dimensions.map((key) => (
           <ScoreCard key={key} title={key} value={evaluation[key]} />
         ))}
       </section>
 
-      <Link
-        href="/"
-        className="mt-8 inline-flex rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white hover:bg-blue-700"
-      >
-        Start New Interview
-      </Link>
+      {/* Footer Navigation */}
+      <div className="flex justify-center mt-12 pb-20 border-t border-gray-200 pt-8">
+        <Link 
+          href="/" 
+          className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-8 py-3.5 font-semibold text-gray-700 hover:bg-gray-50 hover:text-black transition-colors shadow-sm"
+        >
+          Return to Dashboard Homepage
+        </Link>
+      </div>
     </main>
+  );
+}
+
+export default function ResultsPage() {
+  // Wrap in Suspense to safely trigger useSearchParams without failing Server Side hydration bounds
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center">Loading Report...</div>}>
+      <ResultsContent />
+    </Suspense>
   );
 }

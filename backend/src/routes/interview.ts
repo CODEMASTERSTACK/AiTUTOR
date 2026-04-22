@@ -27,8 +27,9 @@ interviewRouter.post("/", async (req, res) => {
   try {
     const { sessionId, candidateText, history } = requestSchema.parse(req.body);
 
+    // Initial greeting
     if (!candidateText.trim() && history.length === 0) {
-      const firstQuestion = BASE_QUESTIONS[0];
+      const firstQuestion = `Hi there! I'm your AI recruiter today. We'll keep this brief and conversational. To start us off, could you quickly introduce yourself and tell me your name?`;
       const tts = await synthesizeToBase64(firstQuestion);
       await saveTurn(sessionId, {
         role: "interviewer",
@@ -44,27 +45,22 @@ interviewRouter.post("/", async (req, res) => {
       });
     }
 
-    const isVeryShort = candidateText.trim().split(/\s+/).filter(Boolean).length <= 2;
+    // Dynamic Edge Case Evaluation
+    const wordCount = candidateText.trim().split(/\s+/).filter(Boolean).length;
+    const isVeryShort = wordCount > 0 && wordCount <= 4;
+    const isRambling = wordCount > 70;
+    const isSilent = !candidateText.trim();
 
     await saveTurn(sessionId, {
       role: "candidate",
-      text: candidateText,
+      text: isSilent ? "[Silence / Inaudible]" : candidateText,
       timestamp: Date.now(),
     });
 
     const messages: ChatMessage[] = [
       { role: "system" as const, content: buildInterviewerPrompt() },
       ...toChatMessages(history),
-      { role: "user" as const, content: candidateText },
-      ...(isVeryShort
-        ? [
-            {
-              role: "system" as const,
-              content:
-                "Candidate gave a very short answer. Ask a rephrased probing follow-up.",
-            },
-          ]
-        : []),
+      { role: "user" as const, content: isSilent ? "[User said nothing]" : candidateText },
     ];
 
     const llm = await generateReply(messages);
@@ -78,7 +74,7 @@ interviewRouter.post("/", async (req, res) => {
 
     return res.json({
       replyText: llm.text,
-      reprompt: isVeryShort,
+      reprompt: isVeryShort || isSilent,
       fallbackUsed: llm.fallbackUsed,
       audioBase64: tts.audioBase64,
       usedTtsFallback: tts.usedFallback,

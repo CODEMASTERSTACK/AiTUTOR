@@ -31,27 +31,37 @@ function toScore(value: unknown): number {
 
 const dimensionSchema = z.object({
   score: z.preprocess(toScore, z.number().min(1).max(5)),
-  reasoning: z.preprocess(toText, z.string().min(1)),
-  evidenceQuote: z.preprocess(toText, z.string().min(1)),
+  reasoning: z.preprocess(toText, z.string()),
+  evidenceQuote: z.preprocess(toText, z.string()),
 });
 
 export const evaluationSchema = z.object({
+  candidateName: z.preprocess(toText, z.string().catch("Candidate")),
+  strengths: z.preprocess(toText, z.string()),
+  weaknesses: z.preprocess(toText, z.string()),
   clarity: dimensionSchema,
   simplicity: dimensionSchema,
   patience: dimensionSchema,
   warmth: dimensionSchema,
   fluency: dimensionSchema,
-  overallSummary: z.preprocess(toText, z.string().min(1)),
+  overallSummary: z.preprocess(toText, z.string()),
 });
 
 function buildEvaluationPrompt(history: InterviewTurn[]) {
   return [
-    "Evaluate this tutor interview transcript.",
-    "Return only valid JSON.",
-    "Use keys: clarity, simplicity, patience, warmth, fluency, overallSummary.",
-    "Each dimension must include score(1-5), reasoning, evidenceQuote (exact quote).",
-    "Be strict and evidence-based.",
+    "Critically evaluate this tutor interview transcript.",
+    "Return ONLY strict, valid JSON with no markdown formatting.",
+    "Use EXACTLY these keys: candidateName, strengths, weaknesses, clarity, simplicity, patience, warmth, fluency, overallSummary.",
+    '- "candidateName": The name of the candidate if mentioned. If not, use "Candidate".',
+    '- "strengths": A comprehensive summary of what the candidate did exceptionally well.',
+    '- "weaknesses": Areas of improvement. You MUST write this in a highly polite, encouraging, and coaching tone (e.g., "An area for potential growth is..."). Never be harsh.',
+    "For EACH of the five soft-skill dimensions (clarity, simplicity, patience, warmth, fluency), you must provide:",
+    '- "score": A number from 1 to 5.',
+    '- "reasoning": A highly detailed, objective justification of the score.',
+    '- "evidenceQuote": A SPECIFIC, VERBATIM EXCERPT quoted directly from the candidate\'s text that proves your point. You MUST extract their exact words. If no suitable quote exists due to a very short session, return "None".',
+    "Be aggressive in grading scores, but maintain empathy in the written feedback.",
     "",
+    "Transcript:",
     JSON.stringify(history),
   ].join("\n");
 }
@@ -112,6 +122,9 @@ function normalizePayload(raw: unknown) {
     (obj[key] as Record<string, unknown> | undefined) ?? {};
 
   return {
+    candidateName: typeof obj.candidateName === 'string' ? obj.candidateName : "Candidate",
+    strengths: typeof obj.strengths === 'string' ? obj.strengths : "",
+    weaknesses: typeof obj.weaknesses === 'string' ? obj.weaknesses : "",
     clarity: pickDimension("clarity"),
     simplicity: pickDimension("simplicity"),
     patience: pickDimension("patience"),

@@ -27,4 +27,7 @@ export interface EvaluationResult {
   warmth: DimensionScore;
   fluency: DimensionScore;
   overallSummary: string;
+  candidateName: string;
+  strengths: string;
+  weaknesses: string;
 }
