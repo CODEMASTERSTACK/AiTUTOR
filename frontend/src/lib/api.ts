@@ -17,12 +17,13 @@ export async function startInterview(sessionId: string) {
 export async function sendCandidateTurn(
   sessionId: string,
   candidateText: string,
-  history: InterviewTurn[]
+  history: InterviewTurn[],
+  elapsedSeconds?: number
 ) {
   const res = await fetch(`${BACKEND_URL}/api/interview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, candidateText, history }),
+    body: JSON.stringify({ sessionId, candidateText, history, elapsedSeconds }),
   });
 
   if (!res.ok) {

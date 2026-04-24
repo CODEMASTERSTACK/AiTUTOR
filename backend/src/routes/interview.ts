@@ -12,6 +12,7 @@ import { synthesizeToBase64 } from "../services/tts.js";
 const requestSchema = z.object({
   sessionId: z.string().min(1),
   candidateText: z.string(),
+  elapsedSeconds: z.number().optional(),
   history: z.array(
     z.object({
       role: z.enum(["interviewer", "candidate"]),
@@ -25,11 +26,11 @@ export const interviewRouter = Router();
 
 interviewRouter.post("/", async (req, res) => {
   try {
-    const { sessionId, candidateText, history } = requestSchema.parse(req.body);
+    const { sessionId, candidateText, history, elapsedSeconds } = requestSchema.parse(req.body);
 
     // Initial greeting
     if (!candidateText.trim() && history.length === 0) {
-      const firstQuestion = `Hi there! I'm your AI recruiter today. We'll keep this brief and conversational. To start us off, could you quickly introduce yourself and tell me your name?`;
+      const firstQuestion = `Hello there! This side Krish, your AI interviewer. We'll keep this brief and conversational. To start us off, could you quickly introduce yourself?`;
       const tts = await synthesizeToBase64(firstQuestion);
       await saveTurn(sessionId, {
         role: "interviewer",
@@ -62,6 +63,13 @@ interviewRouter.post("/", async (req, res) => {
       ...toChatMessages(history),
       { role: "user" as const, content: isSilent ? "[User said nothing]" : candidateText },
     ];
+
+    if (elapsedSeconds && elapsedSeconds >= 570) {
+      messages.push({
+        role: "system",
+        content: "[SYSTEM DIRECTIVE: There are only 30 seconds left in the interview. You MUST briefly inform the candidate that time is almost up and ask them for any final concluding remarks.]"
+      });
+    }
 
     const llm = await generateReply(messages);
     const tts = await synthesizeToBase64(llm.text);

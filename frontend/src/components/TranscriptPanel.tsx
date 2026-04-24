@@ -1,15 +1,28 @@
+"use client";
+
 import { InterviewTurn } from "@/lib/types";
+import { useEffect, useRef } from "react";
 
 interface TranscriptPanelProps {
   turns: InterviewTurn[];
+  isTyping?: boolean;
 }
 
-export function TranscriptPanel({ turns }: TranscriptPanelProps) {
+export function TranscriptPanel({ turns, isTyping }: TranscriptPanelProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to the bottom whenever turns change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [turns, isTyping]);
+
   return (
-    <div className="flex flex-col h-full w-full bg-white p-4">
+    <div className="flex flex-col h-full w-full bg-white p-4 overflow-hidden">
       <h2 className="mb-4 text-sm font-bold tracking-widest text-gray-400 uppercase shrink-0">Live Transcript</h2>
       
-      <div className="flex-1 overflow-y-auto space-y-4 pr-2 pb-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 pb-4 scroll-smooth">
         {turns.map((turn, idx) => {
           const isCandidate = turn.role === "candidate";
           return (
@@ -29,8 +42,17 @@ export function TranscriptPanel({ turns }: TranscriptPanelProps) {
             </div>
           );
         })}
-        {turns.length === 0 && (
+        {turns.length === 0 && !isTyping && (
           <p className="text-sm text-gray-400 italic text-center mt-10">Transcript will appear here once the session begins.</p>
+        )}
+        {isTyping && (
+          <div className="flex w-full justify-start mt-2">
+            <div className="rounded-2xl px-5 py-4 bg-gray-100 rounded-bl-sm border border-gray-200 shadow-sm flex items-center gap-1.5">
+               <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+               <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+               <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
         )}
       </div>
     </div>

@@ -23,7 +23,7 @@ export default function InterviewPage() {
   const router = useRouter();
   
   // --- PRE-FLIGHT STATE ---
-  const [step, setStep] = useState<'mic' | 'cam' | 'consent' | 'interview'>('mic');
+  const [step, setStep] = useState<'info' | 'setup' | 'interview'>('info');
   const [micStatus, setMicStatus] = useState<HardwareStatus>('pending');
   const [camStatus, setCamStatus] = useState<HardwareStatus>('pending');
   const [hasConsented, setHasConsented] = useState(false);
@@ -38,6 +38,7 @@ export default function InterviewPage() {
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const [loadingTurn, setLoadingTurn] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [idleSeconds, setIdleSeconds] = useState(0);
   
   // --- TRACKING STATE ---
   const [warningsLeft, setWarningsLeft] = useState(3);
@@ -57,7 +58,7 @@ export default function InterviewPage() {
 
   // Set up video link when camera is active
   useEffect(() => {
-    if ((step === 'cam' || step === 'interview') && camStatus === 'granted' && videoRef.current && streamRef.current) {
+    if ((step === 'setup' || step === 'interview') && camStatus === 'granted' && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
     }
   }, [step, camStatus]);
@@ -101,7 +102,7 @@ export default function InterviewPage() {
 
       try {
         setLoadingTurn(true);
-        const reply = await sendCandidateTurn(sessionId, text, turns);
+        const reply = await sendCandidateTurn(sessionId, text, turns, elapsedSeconds);
         const interviewerTurn: InterviewTurn = {
           role: "interviewer",
           text: reply.replyText,
@@ -187,6 +188,29 @@ export default function InterviewPage() {
     }, 1000);
     return () => clearInterval(interval);
   }, [step, isFrozen]);
+
+  // 10-Minute Timeout Enforcer
+  useEffect(() => {
+    if (elapsedSeconds >= 600 && !loadingTurn) {
+       void endInterview();
+    }
+  }, [elapsedSeconds, loadingTurn]);
+
+  // Silence / Inactivity Tracker
+  useEffect(() => {
+    if (step !== 'interview') return;
+    
+    if (isSpeaking || isListening || loadingTurn || isFrozen) {
+       setIdleSeconds(0);
+       return;
+    }
+
+    const interval = setInterval(() => {
+       setIdleSeconds(prev => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step, isFrozen, isSpeaking, isListening, loadingTurn]);
 
   // --- FACE TRACKING LOGIC ---
   useEffect(() => {
@@ -277,135 +301,46 @@ export default function InterviewPage() {
   );
 
   // --- RENDER PRE-FLIGHT ---
-  if (step === 'mic') {
-    return (
-      <main className="min-h-screen bg-[#fafafa] flex items-center justify-center p-6 font-sans">
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm max-w-lg w-full p-8 text-center">
-          <div className="w-16 h-16 bg-[#fff5f2] text-[#e36c39] rounded-full flex items-center justify-center mx-auto mb-6">
-            <Mic className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Microphone Check</h2>
-          <p className="text-gray-500 mb-8 text-sm">To conduct the voice-based evaluation, we need access to your microphone.</p>
-          
-          {micStatus === 'pending' || micStatus === 'checking' ? (
-            <button 
-              onClick={requestMicrophone}
-              disabled={micStatus === 'checking'}
-              className="w-full bg-[#e36c39] text-white font-semibold py-3 rounded-lg hover:bg-[#d65f2e] transition disabled:opacity-50"
-            >
-              {micStatus === 'checking' ? 'Checking...' : 'Allow Microphone'}
-            </button>
-          ) : micStatus === 'granted' ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-center gap-2 text-green-600 font-semibold bg-green-50 py-3 rounded-lg border border-green-200">
-                <CheckCircle className="w-5 h-5" /> Access Granted
-              </div>
-              <button 
-                onClick={() => setStep('cam')}
-                className="w-full bg-gray-900 text-white font-semibold py-3 rounded-lg hover:bg-black transition flex items-center justify-center gap-2"
-              >
-                Continue Setup <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-center gap-2 text-red-600 font-semibold bg-red-50 py-3 rounded-lg border border-red-200">
-                <AlertCircle className="w-5 h-5" /> Access Denied
-              </div>
-              <p className="text-xs text-gray-500">Please check your browser permissions and allow access to continue.</p>
-              <button onClick={requestMicrophone} className="w-full border border-gray-300 text-gray-700 font-semibold py-3 rounded-lg hover:bg-gray-50 transition">
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  if (step === 'cam') {
-    return (
-      <main className="min-h-screen bg-[#fafafa] flex items-center justify-center p-6 font-sans">
-        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm max-w-lg w-full p-8 text-center">
-          <div className="w-16 h-16 bg-[#fff5f2] text-[#e36c39] rounded-full flex items-center justify-center mx-auto mb-6">
-            <Video className="w-8 h-8" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Camera Check</h2>
-          <p className="text-gray-500 mb-8 text-sm">Professional assessments require identity verification. Please smile for the camera!</p>
-          
-          {camStatus === 'pending' || camStatus === 'checking' ? (
-            <button 
-              onClick={requestCamera}
-              disabled={camStatus === 'checking'}
-              className="w-full bg-[#e36c39] text-white font-semibold py-3 rounded-lg hover:bg-[#d65f2e] transition disabled:opacity-50"
-            >
-              {camStatus === 'checking' ? 'Checking...' : 'Allow Camera'}
-            </button>
-          ) : camStatus === 'granted' ? (
-            <div className="space-y-6">
-              {/* Video Feed Preview */}
-              <div className="w-full h-48 bg-black rounded-lg overflow-hidden border border-gray-200 shadow-inner relative">
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform -scale-x-100" />
-                <div className="absolute top-2 right-2 bg-green-500 text-white text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">Live</div>
-              </div>
-
-              <div className="flex items-center justify-center gap-2 text-green-600 font-semibold bg-green-50 py-3 rounded-lg border border-green-200">
-                <CheckCircle className="w-5 h-5" /> Video Verified
-              </div>
-              <button 
-                onClick={() => setStep('consent')}
-                className="w-full bg-gray-900 text-white font-semibold py-3 rounded-lg hover:bg-black transition flex items-center justify-center gap-2"
-              >
-                Continue Setup <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-center gap-2 text-red-600 font-semibold bg-red-50 py-3 rounded-lg border border-red-200">
-                <AlertCircle className="w-5 h-5" /> Access Denied
-              </div>
-              <p className="text-xs text-gray-500">Please check your browser permissions to allow visual rendering.</p>
-              <button onClick={requestCamera} className="w-full border border-gray-300 text-gray-700 font-semibold py-3 rounded-lg hover:bg-gray-50 transition">
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-      </main>
-    );
-  }
-
-  if (step === 'consent') {
+  if (step === 'info') {
     return (
       <main className="min-h-screen bg-[#fafafa] flex items-center justify-center p-6 font-sans">
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm max-w-2xl w-full p-8 md:p-12">
           
-          <div className="mb-8 border-b border-gray-200 pb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Final Review & Consent</h2>
-            <p className="text-gray-500 text-sm">Please read the evaluation parameters carefully before starting your session.</p>
+          <div className="mb-8 border-b border-gray-200 pb-8 text-center">
+            <div className="w-16 h-16 bg-[#fff5f2] text-[#e36c39] rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+            <h2 className="text-3xl font-extrabold text-gray-900 mb-4">Fairness & Evaluation Protocol</h2>
+            <p className="text-gray-500 text-base leading-relaxed">
+              We are committed to conducting a highly objective and fair assessment.
+              To achieve this, we will now perform a <strong className="text-black">voice and camera-based evaluation</strong>.
+              This allows our platform to actively monitor the environment and evaluate your communication skills authentically, ensuring a level playing field for all candidates.
+            </p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4 mb-10">
             <div className="p-5 border border-gray-100 bg-gray-50 rounded-xl">
               <Clock className="w-5 h-5 text-[#e36c39] mb-2" />
-              <h4 className="font-semibold text-gray-900 mb-1">10-Minute Limit</h4>
-              <p className="text-xs text-gray-500">The session is brief and conversational. Speak clearly.</p>
+              <h4 className="font-semibold text-gray-900 mb-1">10-Minute Strict Limit</h4>
+              <p className="text-xs text-gray-500">The session automatically terminates after exactly 10 minutes.</p>
             </div>
             <div className="p-5 border border-gray-100 bg-gray-50 rounded-xl">
-              <ShieldCheck className="w-5 h-5 text-[#e36c39] mb-2" />
-              <h4 className="font-semibold text-gray-900 mb-1">Human Evaluated</h4>
-              <p className="text-xs text-gray-500">AI conducts the interview, but human recruiters make final choices.</p>
+              <AlertTriangle className="w-5 h-5 text-[#e36c39] mb-2" />
+              <h4 className="font-semibold text-gray-900 mb-1">Active Face Tracking</h4>
+              <p className="text-xs text-gray-500">
+                You must remain within the camera frame. Ducking out triggers a warning lock.
+              </p>
             </div>
             <div className="p-5 border border-gray-100 bg-gray-50 rounded-xl md:col-span-2">
-              <AlertTriangle className="w-5 h-5 text-[#e36c39] mb-2" />
-              <h4 className="font-semibold text-gray-900 mb-1">Active Face Tracking Protocol</h4>
+              <Mic className="w-5 h-5 text-[#e36c39] mb-2" />
+              <h4 className="font-semibold text-gray-900 mb-1">Inactivity Monitoring</h4>
               <p className="text-xs text-gray-500">
-                You must remain perfectly within the camera frame during the soft-skills evaluation. <b>Ducking out of frame will trigger an automatic freeze warning lock.</b> 3 warnings will result in immediate failure and interview termination.
+                The AI requires continuous engagement. Remaining silent for more than 20 seconds will trigger an inactivity warning.
               </p>
             </div>
           </div>
 
-          <div className="bg-[#fff5f2] border border-[#ffdbcf] p-5 rounded-xl mb-8 flex items-start gap-4">
+          <div className="bg-[#fff5f2] border border-[#ffdbcf] p-5 rounded-xl mb-8 flex items-start gap-4 hover:border-[#e36c39] transition-colors">
             <div className="pt-0.5">
               <input 
                 type="checkbox" 
@@ -415,18 +350,136 @@ export default function InterviewPage() {
                 className="w-5 h-5 accent-[#e36c39] cursor-pointer"
               />
             </div>
-            <label htmlFor="consent" className="text-sm text-black cursor-pointer">
-              <strong>I understand and agree.</strong> I consent to my audio and visual session being actively tracked and recorded strictly for recruitment evaluation.
+            <label htmlFor="consent" className="text-sm text-black cursor-pointer leading-relaxed">
+              <strong>I understand and agree.</strong> I consent to my audio and visual session being actively tracked and recorded strictly for recruitment evaluation purposes.
             </label>
           </div>
 
           <button 
-            onClick={() => setStep('interview')}
+            onClick={() => setStep('setup')}
             disabled={!hasConsented}
-            className="w-full bg-[#e36c39] text-white font-semibold py-4 rounded-xl hover:bg-[#d65f2e] transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#e36c39]/30"
+            className="w-full bg-[#e36c39] text-white font-bold py-4 rounded-xl hover:bg-[#d65f2e] transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#e36c39]/30 flex items-center justify-center gap-2"
           >
-            Acknowledge & Start Interview
+            Acknowledge & Proceed <ArrowRight className="w-5 h-5" />
           </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (step === 'setup') {
+    return (
+      <main className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-6 font-sans">
+        <div className="max-w-4xl w-full">
+          {/* Progress Bar Header */}
+          <div className="flex items-center justify-between mb-8 px-4">
+            <div className={`flex flex-col items-center gap-2 ${micStatus === 'granted' ? 'text-green-600' : 'text-[#e36c39]'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${micStatus === 'granted' ? 'bg-green-50 border-green-600' : 'bg-[#fff5f2] border-[#e36c39]'}`}>
+                {micStatus === 'granted' ? <CheckCircle className="w-5 h-5" /> : <span>1</span>}
+              </div>
+              <span className="text-sm font-bold">Microphone</span>
+            </div>
+            <div className={`flex-1 h-1 mx-4 rounded-full ${micStatus === 'granted' ? 'bg-green-500' : 'bg-gray-200'}`}></div>
+            
+            <div className={`flex flex-col items-center gap-2 ${camStatus === 'granted' ? 'text-green-600' : (micStatus === 'granted' ? 'text-[#e36c39]' : 'text-gray-400')}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${camStatus === 'granted' ? 'bg-green-50 border-green-600' : (micStatus === 'granted' ? 'bg-[#fff5f2] border-[#e36c39]' : 'bg-gray-50 border-gray-300')}`}>
+                {camStatus === 'granted' ? <CheckCircle className="w-5 h-5" /> : <span>2</span>}
+              </div>
+              <span className="text-sm font-bold">Camera</span>
+            </div>
+            <div className={`flex-1 h-1 mx-4 rounded-full ${camStatus === 'granted' ? 'bg-green-500' : 'bg-gray-200'}`}></div>
+            
+            <div className={`flex flex-col items-center gap-2 ${camStatus === 'granted' && micStatus === 'granted' ? 'text-[#e36c39]' : 'text-gray-400'}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${camStatus === 'granted' && micStatus === 'granted' ? 'bg-[#fff5f2] border-[#e36c39]' : 'bg-gray-50 border-gray-300'}`}>
+                3
+              </div>
+              <span className="text-sm font-bold">Ready</span>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm w-full p-8 md:p-12">
+            {/* Step 1: Microphone */}
+            {micStatus !== 'granted' && (
+              <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="w-20 h-20 bg-[#fff5f2] text-[#e36c39] rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Mic className="w-10 h-10" />
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">Microphone Check</h2>
+                <p className="text-gray-500 mb-8 text-base max-w-md mx-auto">We need to capture your voice clearly for the AI to understand your responses.</p>
+                
+                {micStatus === 'pending' || micStatus === 'checking' ? (
+                  <button 
+                    onClick={requestMicrophone}
+                    disabled={micStatus === 'checking'}
+                    className="w-full max-w-md mx-auto bg-[#e36c39] text-white font-bold py-4 rounded-xl hover:bg-[#d65f2e] transition disabled:opacity-50 shadow-lg shadow-[#e36c39]/30 block"
+                  >
+                    {micStatus === 'checking' ? 'Connecting...' : 'Allow Microphone'}
+                  </button>
+                ) : (
+                  <div className="space-y-4 max-w-md mx-auto">
+                    <div className="flex items-center justify-center gap-2 text-red-600 font-semibold bg-red-50 py-3 rounded-xl border border-red-200">
+                      <AlertCircle className="w-5 h-5" /> Microphone Blocked
+                    </div>
+                    <button onClick={requestMicrophone} className="w-full border border-gray-300 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition">
+                      Try Again
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 2: Camera */}
+            {micStatus === 'granted' && camStatus !== 'granted' && (
+               <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="w-20 h-20 bg-[#fff5f2] text-[#e36c39] rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Video className="w-10 h-10" />
+                </div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-4">Camera Check</h2>
+                <p className="text-gray-500 mb-8 text-base max-w-md mx-auto">Make sure your face is clearly visible. We use active tracking to monitor the session.</p>
+                
+                {camStatus === 'pending' || camStatus === 'checking' ? (
+                  <button 
+                    onClick={requestCamera}
+                    disabled={camStatus === 'checking'}
+                    className="w-full max-w-md mx-auto bg-[#e36c39] text-white font-bold py-4 rounded-xl hover:bg-[#d65f2e] transition disabled:opacity-50 shadow-lg shadow-[#e36c39]/30 block"
+                  >
+                    {camStatus === 'checking' ? 'Connecting...' : 'Allow Camera'}
+                  </button>
+                ) : (
+                  <div className="space-y-4 max-w-md mx-auto">
+                    <div className="flex items-center justify-center gap-2 text-red-600 font-semibold bg-red-50 py-3 rounded-xl border border-red-200">
+                      <AlertCircle className="w-5 h-5" /> Camera Blocked
+                    </div>
+                    <button onClick={requestCamera} className="w-full border border-gray-300 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition">
+                      Try Again
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 3: All set */}
+            {micStatus === 'granted' && camStatus === 'granted' && (
+              <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">You are ready!</h2>
+                <p className="text-gray-500 mb-8 text-sm">Everything looks good. Position yourself in the center of the frame.</p>
+                
+                <div className="w-full max-w-lg mx-auto h-64 bg-black rounded-2xl overflow-hidden border border-gray-200 shadow-inner relative mb-8">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover transform -scale-x-100" />
+                  <div className="absolute top-4 right-4 bg-green-500/90 text-white text-[10px] px-2 py-1 rounded font-bold uppercase tracking-wider backdrop-blur-sm flex items-center gap-1">
+                     <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></div> Live
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setStep('interview')}
+                  className="w-full max-w-lg mx-auto bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition shadow-xl shadow-black/20 flex items-center justify-center gap-2"
+                >
+                  Start Interview <ArrowRight className="w-5 h-5" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     );
@@ -436,6 +489,23 @@ export default function InterviewPage() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 font-sans">
       
+      {/* INACTIVITY WARNING OVERLAY */}
+      {idleSeconds >= 20 && !isFrozen && (
+        <div className="fixed inset-0 z-40 bg-[#e36c39]/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center shadow-2xl">
+           <AlertCircle className="w-24 h-24 text-white mb-6 animate-bounce" />
+           <h2 className="text-4xl font-black text-white mb-4">Are you still there?</h2>
+           <p className="text-xl text-white/90 font-medium max-w-2xl mb-8">
+             We haven't heard anything from you in a while. Please turn on your microphone and speak to continue the interview.
+           </p>
+           <button 
+             onClick={startListening} 
+             className="bg-white text-[#e36c39] font-bold text-xl px-10 py-4 rounded-full shadow-lg hover:bg-gray-100 transition transform hover:scale-105"
+           >
+             Tap to Speak
+           </button>
+        </div>
+      )}
+
       {/* FROZEN OVERLAY */}
       {isFrozen && warningsLeft > 0 && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center shadow-2xl">
@@ -492,7 +562,7 @@ export default function InterviewPage() {
       <section className="grid gap-8 lg:grid-cols-2">
         {/* Left Column: AI Avatar and Mic Button */}
         <div className="flex flex-col gap-6 h-full">
-          <div className="flex-1 w-full relative min-h-[500px]">
+          <div className="flex-1 w-full relative h-[300px] md:h-[400px] lg:h-[500px]">
             <AvatarInterviewer isSpeaking={isSpeaking} getAudioVolume={getAudioVolume} />
             {/* Picture in Picture Webcam Overlay */}
             {camStatus === 'granted' && (
@@ -512,16 +582,16 @@ export default function InterviewPage() {
              <MicButton isListening={isListening} onClick={startListening} disabled={!canUseMic} />
              <div className="h-6 mt-3">
                 {isFrozen && <p className="text-sm font-bold text-red-600 animate-bounce">INTERVIEW FROZEN</p>}
-                {loadingTurn && !isFrozen && <p className="text-sm font-medium text-[#e36c39] animate-pulse">Platform processing...</p>}
+                {/* Skeleton Bubble Handles Loading State */}
              </div>
           </div>
         </div>
 
         {/* Right Column: Transcript and Submit Button */}
         <div className="flex flex-col gap-6 h-full">
-          <div className="flex-1 w-full min-h-[500px] border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col relative">
+          <div className="flex-1 w-full h-[350px] md:h-[450px] lg:h-[500px] max-h-[350px] md:max-h-[450px] lg:max-h-[500px] border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col relative">
             {isFrozen && <div className="absolute inset-0 z-10 bg-white/50 backdrop-blur-[2px]"></div>}
-            <TranscriptPanel turns={turns} />
+            <TranscriptPanel turns={turns} isTyping={loadingTurn} />
           </div>
           <div className="flex flex-col items-center justify-center pt-2">
             <button
