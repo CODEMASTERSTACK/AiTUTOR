@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 type BrowserSpeechRecognition = {
   lang: string;
+  continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   onstart: (() => void) | null;
@@ -29,6 +30,17 @@ interface UseSpeechRecognitionOptions {
 export function useSpeechRecognition(options: UseSpeechRecognitionOptions) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const transcriptRef = useRef<string>("");
+
+  const handleStop = useCallback((isForced: boolean) => {
+    if (transcriptRef.current) {
+      options.onFinalText(transcriptRef.current);
+      transcriptRef.current = "";
+    } else if (!isForced) {
+      options.onNoSpeech();
+    }
+    setIsListening(false);
+  }, [options]);
 
   const startListening = useCallback(() => {
     const SpeechRecognitionCtor =
@@ -39,32 +51,47 @@ export function useSpeechRecognition(options: UseSpeechRecognitionOptions) {
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
+    transcriptRef.current = ""; // Reset on start
+
     recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
+    
+    recognition.onend = () => {
+      // If it ends naturally without stop() being called (e.g. browser timeout)
+      setIsListening((prev) => {
+        if (prev) {
+          setTimeout(() => handleStop(true), 0);
+        }
+        return false;
+      });
+    };
+    
     recognition.onerror = () => {
       setIsListening(false);
       options.onNoSpeech();
     };
-    recognition.onresult = (event) => {
-      const text = event.results[0]?.[0]?.transcript?.trim() ?? "";
-      if (!text) {
-        options.onNoSpeech();
-        return;
+
+    recognition.onresult = (event: any) => {
+      let currentTranscript = "";
+      for (let i = 0; i < event.results.length; i++) {
+        currentTranscript += event.results[i][0].transcript + " ";
       }
-      options.onFinalText(text);
+      transcriptRef.current = currentTranscript.trim();
     };
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [options]);
+  }, [handleStop, options]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    setIsListening(false);
-  }, []);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      handleStop(false);
+    }
+  }, [handleStop]);
 
   return {
     isListening,

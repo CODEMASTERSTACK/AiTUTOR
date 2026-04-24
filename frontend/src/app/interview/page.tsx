@@ -294,6 +294,11 @@ export default function InterviewPage() {
     };
   }, [step, warningsLeft]);
 
+  // Clean up audio purely on unmount
+  useEffect(() => {
+    return () => stopSpeaking();
+  }, [stopSpeaking]);
+
 
   const canUseMic = useMemo(
     () => !loadingTurn && !isSpeaking && turns.length > 0 && !isFrozen && warningsLeft > 0,
@@ -579,7 +584,7 @@ export default function InterviewPage() {
             )}
           </div>
           <div className="flex flex-col items-center justify-center pt-2">
-             <MicButton isListening={isListening} onClick={startListening} disabled={!canUseMic} />
+             <MicButton isListening={isListening} onClick={isListening ? stopListening : startListening} disabled={!canUseMic && !isListening} />
              <div className="h-6 mt-3">
                 {isFrozen && <p className="text-sm font-bold text-red-600 animate-bounce">INTERVIEW FROZEN</p>}
                 {/* Skeleton Bubble Handles Loading State */}
