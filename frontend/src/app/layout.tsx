@@ -16,6 +16,9 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "MentorScope | Tutor Assessment",
   description: "A professional, conversational AI assessment for MentorScope tutor candidates.",
+  icons: {
+    icon: '/logo.jpg',
+  },
 };
 
 export default function RootLayout({

@@ -9,8 +9,8 @@ export default function Home() {
       <nav className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100 sticky top-0 z-50">
         
         {/* Left: Logo */}
-        <div className="flex items-center gap-2">
-          <Target className="w-6 h-6 text-black" strokeWidth={1.5} />
+        <div className="flex items-center gap-3">
+          <img src="/logo.jpg" alt="MentorScope Logo" className="w-8 h-8 object-cover rounded-md" />
           <Link href="/" className="font-bold text-xl tracking-tight text-black flex-shrink-0">
             MentorScope
           </Link>
@@ -239,8 +239,8 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
             <div className="col-span-1 md:col-span-2">
-              <div className="font-bold text-2xl tracking-tight text-black mb-4 inline-flex items-center gap-2 hover:text-[#e36c39] transition-colors">
-                <Target className="w-6 h-6" strokeWidth={1.5} />
+              <div className="font-bold text-2xl tracking-tight text-black mb-4 inline-flex items-center gap-3 hover:text-[#e36c39] transition-colors">
+                <img src="/logo.jpg" alt="MentorScope Logo" className="w-8 h-8 object-cover rounded-md" />
                 MentorScope
               </div>
               <p className="text-gray-500 max-w-sm text-sm leading-relaxed">
